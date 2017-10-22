@@ -7,8 +7,6 @@ type InnerJoin struct {
 	current   []Tuple
 }
 
-type OuterJoin InnerJoin
-
 func NewInnerJoin(iters []Iterator) *InnerJoin {
 	return &InnerJoin{iterators: iters}
 }

@@ -47,7 +47,7 @@ labels
 ```
 
 ```
-$ ./kubeql .\kubeql.exe -execute "select pods->spec->containers->0->name as names from pods"
+$ ./kubeql -execute "select pods->spec->containers->0->name as names from pods"
 
 names
 -----
@@ -67,7 +67,7 @@ etc).
 
 
 ```
-$ ./kubeql.exe -execute "select deployments->metadata->name as deployment_name FROM apps/v1beta1/deployments"
+$ ./kubeql -execute "select deployments->metadata->name as deployment_name FROM apps/v1beta1/deployments"
 
 deployment_name
 ---------------
@@ -78,7 +78,7 @@ deployment_name
 ...
 ```
 
-### Indexing
+### Indexes
 
 Kubeql **does not yet** fetch efficiently from the backend. In the future, I
 hope I can use the label/field selector to fetch fewer results than required so
@@ -96,7 +96,7 @@ Kubectl at the moment only supports SQL ANSI-89 JOIN functionality, by selecting
 from multiple tables.
 
 ```
-./kubeql.exe -execute "select deployments->metadata->name as deployment_name, pods->metadata->name as pod_name FROM apps/v1beta1/deployments, pods where pods->metadata->labels->app = deployments->metadata->labels->app"
+$ ./kubeql -execute "select deployments->metadata->name as deployment_name, pods->metadata->name as pod_name FROM apps/v1beta1/deployments, pods where pods->metadata->labels->app = deployments->metadata->labels->app"
 
 deployment_name          pod_name
 ---------------          --------
@@ -128,7 +128,7 @@ labels
 Kubeql supports JQ-style selecting/filtering.
 
 ```
-$ ./kubeql.exe -execute "select jq(deployments->metadata, '.labels.app') as deployment_name FROM apps/v1beta1/deployments"
+$ ./kubeql -execute "select jq(deployments->metadata, '.labels.app') as deployment_name FROM apps/v1beta1/deployments"
 
 deployment_name
 ---------------
@@ -143,7 +143,7 @@ Because `jsonpath` and `jq` return arrays, you can always combine this with
 Kubeql's `->` path expressions to return a single result:
 
 ```
-$ ./kubeql.exe -execute "select jq(deployments->metadata, '.labels.app')->0 as deployment_name FROM apps/v1beta1/deployments"
+$ ./kubeql -execute "select jq(deployments->metadata, '.labels.app')->0 as deployment_name FROM apps/v1beta1/deployments"
 
 deployment_name
 ---------------

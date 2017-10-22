@@ -32,9 +32,5 @@ type FromResource struct {
 }
 
 type WhereClause struct {
-	//LabelSelector string
 	Condition Expr
-}
-
-type OrderByClause interface {
 }
