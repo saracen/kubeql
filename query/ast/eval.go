@@ -130,7 +130,7 @@ func (expr *JQ) Eval(data map[string]interface{}) (interface{}, error) {
 
 	outs, err := filq.Run(filq.NewContext(), expr.Path, evaled)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("jq error, %v", err)
 	}
 
 	if expr.PathExpr != nil {
@@ -138,6 +138,10 @@ func (expr *JQ) Eval(data map[string]interface{}) (interface{}, error) {
 	}
 
 	return outs, nil
+}
+
+func (expr *Subselect) Eval(data map[string]interface{}) (interface{}, error) {
+	return expr.SelectEval(data)
 }
 
 func op(lhs interface{}, op Operator, rhs interface{}) (val interface{}) {

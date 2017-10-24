@@ -38,7 +38,10 @@ func (p *Parser) Parse() (stmt *ast.SelectStatement, err error) {
 	switch statement {
 	case lexer.Select:
 		p.match(lexer.Select)
-		return p.SelectStatement(), nil
+		query := p.SelectStatement()
+		p.match(lexer.EOF)
+
+		return query, nil
 
 	default:
 		return nil, fmt.Errorf("Expected SELECT")
@@ -68,9 +71,13 @@ func (p *Parser) SelectStatement() *ast.SelectStatement {
 		selectStatement.WhereClause = p.WhereClause()
 	}
 
-	p.match(lexer.EOF)
-
 	return selectStatement
+}
+
+func (p *Parser) Subselect() *ast.Subselect {
+	p.match(lexer.Select)
+
+	return &ast.Subselect{Select: p.SelectStatement()}
 }
 
 func (p *Parser) SelectClause() *ast.SelectClause {
@@ -202,10 +209,17 @@ func (p *Parser) UnaryExpression() ast.Expr {
 	switch token {
 	case lexer.OpenParenthesis:
 		p.match(lexer.OpenParenthesis)
-		expr := p.Expression(1)
+
+		if p.s.Peek() == lexer.Select {
+			subselect := p.Subselect()
+			p.match(lexer.CloseParenthesis)
+
+			return subselect
+		}
+
+		paren := &ast.ParenExpr{Expr: p.Expression(1)}
 		p.match(lexer.CloseParenthesis)
 
-		paren := &ast.ParenExpr{Expr: expr}
 		if p.s.Peek() == lexer.Arrow {
 			paren.PathExpr = p.PathExpression()
 		}

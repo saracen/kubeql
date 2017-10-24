@@ -22,6 +22,11 @@ type Row struct {
 	Columns []interface{}
 }
 
+type Session struct {
+	pool      dynamic.ClientPool
+	resources map[schema.GroupVersionKind]*unstructured.UnstructuredList
+}
+
 func ExecuteQuery(c *rest.Config, query string) (*Results, error) {
 	parser := NewStringParser(query)
 
@@ -30,7 +35,12 @@ func ExecuteQuery(c *rest.Config, query string) (*Results, error) {
 		return nil, err
 	}
 
-	return executeSelectStatement(c, s)
+	session := &Session{
+		dynamic.NewDynamicClientPool(c),
+		make(map[schema.GroupVersionKind]*unstructured.UnstructuredList),
+	}
+
+	return executeSelectStatement(session, s, nil)
 }
 
 type UnstructuredListIterator struct {
@@ -62,34 +72,85 @@ func (i *UnstructuredListIterator) Next() joiner.Tuple {
 	return joiner.Tuple(result)
 }
 
-func executeSelectStatement(c *rest.Config, s *ast.SelectStatement) (*Results, error) {
-	pool := dynamic.NewDynamicClientPool(c)
-
+func getResourceIterators(session *Session, namespace string, resources []*ast.FromResource) ([]joiner.Iterator, error) {
 	var iterators []joiner.Iterator
-	for _, resource := range s.FromClause.Resources {
+	for _, resource := range resources {
 		gvk := schema.GroupVersionKind{
 			Group:   resource.Group,
 			Version: resource.Version,
 			Kind:    resource.Kind,
 		}
 
-		client, err := pool.ClientForGroupVersionKind(gvk)
-		if err != nil {
-			return nil, err
-		}
-
-		options := metav1.ListOptions{}
-		list, err := client.Resource(&metav1.APIResource{Name: gvk.Kind, Group: gvk.Group, Version: gvk.Version, Namespaced: true}, s.FromClause.Namespace).List(options)
-		if err != nil {
-			return nil, err
-		}
-
-		data, ok := list.(*unstructured.UnstructuredList)
+		data, ok := session.resources[gvk]
 		if !ok {
-			return nil, fmt.Errorf("Invalid kubernetes resource")
+			client, err := session.pool.ClientForGroupVersionKind(gvk)
+			if err != nil {
+				return nil, err
+			}
+
+			options := metav1.ListOptions{}
+			list, err := client.Resource(&metav1.APIResource{Name: gvk.Kind, Group: gvk.Group, Version: gvk.Version, Namespaced: true}, namespace).List(options)
+			if err != nil {
+				return nil, err
+			}
+
+			data, ok = list.(*unstructured.UnstructuredList)
+			if !ok {
+				return nil, fmt.Errorf("Invalid kubernetes resource")
+			}
+
+			session.resources[gvk] = data
 		}
 
 		iterators = append(iterators, &UnstructuredListIterator{name: resource.Alias, data: data})
+	}
+
+	return iterators, nil
+}
+
+func prepareSubselects(session *Session, walker ast.ExprWalker) {
+	ast.Inspect(walker, func(expr ast.Expr) bool {
+		subselect, ok := expr.(*ast.Subselect)
+		if !ok {
+			return true
+		}
+
+		subselect.SelectEval = func(data map[string]interface{}) (interface{}, error) {
+			switch walker.(type) {
+			case *ast.SelectClause, *ast.WhereClause:
+				results, err := executeSelectStatement(session, subselect.Select, data)
+				if err != nil {
+					return nil, err
+				}
+
+				if len(results.Rows) > 1 {
+					return nil, fmt.Errorf("more than one row returned by a subquery used as an expression")
+				}
+
+				if len(results.Rows[0].Columns) > 1 {
+					return nil, fmt.Errorf("subquery must return only one column")
+				}
+
+				return map[string]interface{}{results.Headers[0]: results.Rows[0].Columns[0]}, nil
+			}
+
+			return executeSelectStatement(session, subselect.Select, data)
+		}
+
+		return false
+	})
+}
+
+func executeSelectStatement(session *Session, s *ast.SelectStatement, data map[string]interface{}) (*Results, error) {
+	prepareSubselects(session, s.SelectClause)
+	//prepareSubselects(pool, s.FromClause)
+	if s.WhereClause != nil {
+		prepareSubselects(session, s.WhereClause)
+	}
+
+	iterators, err := getResourceIterators(session, s.FromClause.Namespace, s.FromClause.Resources)
+	if err != nil {
+		return nil, err
 	}
 
 	// set headers
@@ -108,7 +169,7 @@ func executeSelectStatement(c *rest.Config, s *ast.SelectStatement) (*Results, e
 			break
 		}
 
-		item := innerJoin.Next()
+		item := make(joiner.Tuple).Merge(data, innerJoin.Next())
 
 		// Filter
 		if s.WhereClause != nil && s.WhereClause.Condition != nil {

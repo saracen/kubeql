@@ -8,8 +8,12 @@ type Visitor interface {
 	Visit(Expr) Visitor
 }
 
-type Expr interface {
+type ExprWalker interface {
 	Walk(Visitor) Expr
+}
+
+type Expr interface {
+	ExprWalker
 	Eval(data map[string]interface{}) (interface{}, error)
 }
 
@@ -167,6 +171,18 @@ func (expr *JQ) Walk(v Visitor) Expr {
 	return expr
 }
 
+func (expr *Subselect) Walk(v Visitor) Expr {
+	if v = v.Visit(expr); v == nil {
+		return expr
+	}
+
+	for _, expression := range expr.Select.SelectClause.Expressions {
+		expression.Condition.Walk(v)
+	}
+
+	return expr
+}
+
 type inspector func(Expr) bool
 
 func (f inspector) Visit(expr Expr) Visitor {
@@ -176,6 +192,6 @@ func (f inspector) Visit(expr Expr) Visitor {
 	return nil
 }
 
-func Inspect(expr Expr, f func(Expr) bool) {
-	expr.Walk(inspector(f))
+func Inspect(walker ExprWalker, f func(Expr) bool) {
+	walker.Walk(inspector(f))
 }
