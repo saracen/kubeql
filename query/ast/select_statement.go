@@ -27,8 +27,8 @@ type PathExpression struct {
 }
 
 type FromClause struct {
-	Namespace string
-	Resources []*FromResource
+	Subselects []*FromSubselect
+	Resources  []*FromResource
 }
 
 type FromResource struct {
@@ -36,6 +36,13 @@ type FromResource struct {
 	Group   string
 	Version string
 	Kind    string
+
+	Namespace string
+}
+
+type FromSubselect struct {
+	Alias  string
+	Select *SelectStatement
 }
 
 type WhereClause struct {

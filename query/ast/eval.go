@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"strconv"
 
+	"github.com/saracen/kubeql/query/joiner"
 	"github.com/saracen/kubeql/query/lexer"
 
 	"github.com/reflect/filq"
@@ -71,6 +72,7 @@ func (expr *Boolean) Eval(data map[string]interface{}) (interface{}, error) {
 
 func (expr *Reference) Eval(data map[string]interface{}) (interface{}, error) {
 	path := []string{expr.Name}
+
 	if expr.PathExpr != nil {
 		path = append(path, expr.PathExpr.Fields...)
 	}
@@ -281,12 +283,18 @@ func matchPathExpression(content interface{}, fields []string) (interface{}, err
 	}
 
 	switch v := content.(type) {
+	case joiner.Tuple:
+		child, ok := v[fields[0]]
+		if !ok {
+			return nil, nil
+		}
+		return matchPathExpression(child, fields[1:])
+
 	case map[string]interface{}:
 		child, ok := v[fields[0]]
 		if !ok {
 			return nil, nil
 		}
-
 		return matchPathExpression(child, fields[1:])
 
 	case []interface{}:

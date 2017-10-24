@@ -72,7 +72,42 @@ func (i *UnstructuredListIterator) Next() joiner.Tuple {
 	return joiner.Tuple(result)
 }
 
-func getResourceIterators(session *Session, namespace string, resources []*ast.FromResource) ([]joiner.Iterator, error) {
+type ResultIterator struct {
+	name string
+	idx  int
+	data *Results
+}
+
+func (i *ResultIterator) HasNext() bool {
+	if i.idx < len(i.data.Rows) {
+		return true
+	}
+
+	return false
+}
+
+func (i *ResultIterator) Next() joiner.Tuple {
+	if i.idx == len(i.data.Rows) {
+		i.idx = 0
+	}
+
+	idx := i.idx
+	i.idx++
+
+	kv := make(joiner.Tuple)
+
+	row := i.data.Rows[idx]
+	for idx, header := range i.data.Headers {
+		kv[header] = row.Columns[idx]
+	}
+
+	result := make(joiner.Tuple)
+	result[i.name] = kv
+
+	return result
+}
+
+func getResourceIterators(session *Session, resources []*ast.FromResource) ([]joiner.Iterator, error) {
 	var iterators []joiner.Iterator
 	for _, resource := range resources {
 		gvk := schema.GroupVersionKind{
@@ -89,7 +124,7 @@ func getResourceIterators(session *Session, namespace string, resources []*ast.F
 			}
 
 			options := metav1.ListOptions{}
-			list, err := client.Resource(&metav1.APIResource{Name: gvk.Kind, Group: gvk.Group, Version: gvk.Version, Namespaced: true}, namespace).List(options)
+			list, err := client.Resource(&metav1.APIResource{Name: gvk.Kind, Group: gvk.Group, Version: gvk.Version, Namespaced: true}, resource.Namespace).List(options)
 			if err != nil {
 				return nil, err
 			}
@@ -116,25 +151,24 @@ func prepareSubselects(session *Session, walker ast.ExprWalker) {
 		}
 
 		subselect.SelectEval = func(data map[string]interface{}) (interface{}, error) {
-			switch walker.(type) {
-			case *ast.SelectClause, *ast.WhereClause:
-				results, err := executeSelectStatement(session, subselect.Select, data)
-				if err != nil {
-					return nil, err
-				}
-
-				if len(results.Rows) > 1 {
-					return nil, fmt.Errorf("more than one row returned by a subquery used as an expression")
-				}
-
-				if len(results.Rows[0].Columns) > 1 {
-					return nil, fmt.Errorf("subquery must return only one column")
-				}
-
-				return map[string]interface{}{results.Headers[0]: results.Rows[0].Columns[0]}, nil
+			results, err := executeSelectStatement(session, subselect.Select, data)
+			if err != nil {
+				return nil, err
 			}
 
-			return executeSelectStatement(session, subselect.Select, data)
+			if len(results.Rows) == 0 {
+				return nil, nil
+			}
+
+			if len(results.Rows) > 1 {
+				return nil, fmt.Errorf("more than one row returned by a subquery used as an expression")
+			}
+
+			if len(results.Rows[0].Columns) > 1 {
+				return nil, fmt.Errorf("subquery must return only one column")
+			}
+
+			return results, nil
 		}
 
 		return false
@@ -143,26 +177,24 @@ func prepareSubselects(session *Session, walker ast.ExprWalker) {
 
 func executeSelectStatement(session *Session, s *ast.SelectStatement, data map[string]interface{}) (*Results, error) {
 	prepareSubselects(session, s.SelectClause)
-	//prepareSubselects(pool, s.FromClause)
 	if s.WhereClause != nil {
 		prepareSubselects(session, s.WhereClause)
 	}
 
-	iterators, err := getResourceIterators(session, s.FromClause.Namespace, s.FromClause.Resources)
+	iterators, err := getResourceIterators(session, s.FromClause.Resources)
 	if err != nil {
 		return nil, err
 	}
 
-	// set headers
-	results := &Results{}
-	for _, expr := range s.SelectClause.Expressions {
-		alias := expr.Alias
-		if alias == "" {
-			alias = "?column?"
+	for _, subselect := range s.FromClause.Subselects {
+		results, err := executeSelectStatement(session, subselect.Select, data)
+		if err != nil {
+			return nil, err
 		}
-		results.Headers = append(results.Headers, alias)
+		iterators = append(iterators, &ResultIterator{name: subselect.Alias, data: results})
 	}
 
+	results := &Results{}
 	innerJoin := joiner.NewInnerJoin(iterators)
 	for {
 		if !innerJoin.HasNext() {
@@ -192,8 +224,24 @@ func executeSelectStatement(session *Session, s *ast.SelectStatement, data map[s
 				return nil, err
 			}
 
+			if subres, ok := evaled.(*Results); ok {
+				if expr.Alias == "" {
+					expr.Alias = subres.Headers[0]
+				}
+				evaled = subres.Rows[0].Columns[0]
+			}
+
 			row.Columns = append(row.Columns, evaled)
 		}
+	}
+
+	// set headers
+	for _, expr := range s.SelectClause.Expressions {
+		alias := expr.Alias
+		if alias == "" {
+			alias = "?column?"
+		}
+		results.Headers = append(results.Headers, alias)
 	}
 
 	return results, nil

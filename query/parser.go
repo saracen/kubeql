@@ -96,22 +96,37 @@ func (p *Parser) SelectClause() *ast.SelectClause {
 func (p *Parser) FromClause() *ast.FromClause {
 	p.match(lexer.From)
 
-	resources := []*ast.FromResource{
-		p.FromResource(),
+	from := &ast.FromClause{}
+
+	if p.s.Peek() == lexer.OpenParenthesis {
+		from.Subselects = []*ast.FromSubselect{p.FromSubselect()}
+	} else {
+		from.Resources = []*ast.FromResource{p.FromResource()}
 	}
 
 	for p.s.Peek() == lexer.Comma {
 		p.match(lexer.Comma)
-		resources = append(resources, p.FromResource())
+
+		if p.s.Peek() == lexer.OpenParenthesis {
+			from.Subselects = append(from.Subselects, p.FromSubselect())
+		} else {
+			from.Resources = append(from.Resources, p.FromResource())
+		}
 	}
 
-	var namespace string
-	if p.s.Peek() == lexer.Namespace {
-		p.match(lexer.Namespace)
-		namespace = p.match(lexer.Ident)
-	}
+	return from
+}
 
-	return &ast.FromClause{Namespace: namespace, Resources: resources}
+func (p *Parser) FromSubselect() *ast.FromSubselect {
+	p.match(lexer.OpenParenthesis)
+	p.match(lexer.Select)
+	s := p.SelectStatement()
+	p.match(lexer.CloseParenthesis)
+
+	return &ast.FromSubselect{
+		Select: s,
+		Alias:  p.AsAlias("", false, true),
+	}
 }
 
 func (p *Parser) FromResource() *ast.FromResource {
@@ -126,7 +141,12 @@ func (p *Parser) FromResource() *ast.FromResource {
 		resource.Kind = p.match(lexer.Ident)
 	}
 
-	resource.Alias = p.AsAlias(resource.Kind, false)
+	if p.s.Peek() == lexer.Namespace {
+		p.match(lexer.Namespace)
+		resource.Namespace = p.match(lexer.Ident)
+	}
+
+	resource.Alias = p.AsAlias(resource.Kind, false, false)
 
 	return resource
 }
@@ -144,7 +164,7 @@ func (p *Parser) SelectExpression() *ast.SelectExpression {
 	selectExpr := &ast.SelectExpression{}
 
 	selectExpr.Condition = p.Expression(1)
-	selectExpr.Alias = p.AsAlias("", true)
+	selectExpr.Alias = p.AsAlias("", true, false)
 
 	return selectExpr
 }
@@ -169,17 +189,18 @@ func (p *Parser) PathExpression() *ast.PathExpression {
 	}
 }
 
-func (p *Parser) AsAlias(def string, allowString bool) string {
+func (p *Parser) AsAlias(def string, allowString, required bool) string {
 	if p.s.Peek() == lexer.As {
 		p.match(lexer.As)
 	}
 
 	token := p.s.Peek()
-	if token == lexer.Ident {
-		return p.match(lexer.Ident)
-	}
-	if allowString && token == lexer.String {
+	switch true {
+	case allowString && token == lexer.String:
 		return p.match(lexer.String)
+
+	case token == lexer.Ident || required:
+		return p.match(lexer.Ident)
 	}
 
 	return def
