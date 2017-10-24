@@ -1,12 +1,12 @@
 package lexer
 
 import (
-	"unicode"
 	"bufio"
-	"io"
 	"bytes"
-	"strings"
+	"io"
 	"strconv"
+	"strings"
+	"unicode"
 )
 
 type TokenType int
@@ -57,8 +57,8 @@ type Scanner struct {
 	r *bufio.Reader
 
 	idx, runeSize int
-	buf  bytes.Buffer
-	next struct {
+	buf           bytes.Buffer
+	next          struct {
 		token  TokenType
 		text   string
 		offset int
@@ -79,7 +79,6 @@ func (s *Scanner) Scan() (TokenType, int, string) {
 
 	return token, offset, text
 }
-
 
 func (s *Scanner) Peek() TokenType {
 	return s.next.token
@@ -291,5 +290,5 @@ func (s *Scanner) peek() rune {
 }
 
 func isIdentifier(r rune) bool {
-  	return r == '_' || unicode.IsLetter(r)
+	return r == '_' || unicode.IsLetter(r)
 }

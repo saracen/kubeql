@@ -1,8 +1,8 @@
 package query
 
 import (
-	"fmt"
 	"bytes"
+	"fmt"
 	"strconv"
 
 	"github.com/saracen/kubeql/query/ast"
@@ -207,7 +207,7 @@ func (p *Parser) UnaryExpression() ast.Expr {
 
 		paren := &ast.ParenExpr{Expr: expr}
 		if p.s.Peek() == lexer.Arrow {
-			paren.PathExpr =  p.PathExpression()
+			paren.PathExpr = p.PathExpression()
 		}
 
 		return paren
@@ -235,7 +235,7 @@ func (p *Parser) UnaryExpression() ast.Expr {
 		name := p.match(lexer.Ident)
 		ref := &ast.Reference{Name: name}
 		if p.s.Peek() == lexer.Arrow {
-			ref.PathExpr =  p.PathExpression()
+			ref.PathExpr = p.PathExpression()
 		}
 
 		return ref
@@ -250,7 +250,7 @@ func (p *Parser) UnaryExpression() ast.Expr {
 
 		jsonpath := &ast.JsonPath{Expr: expr, Path: path}
 		if p.s.Peek() == lexer.Arrow {
-			jsonpath.PathExpr =  p.PathExpression()
+			jsonpath.PathExpr = p.PathExpression()
 		}
 
 		return jsonpath
@@ -265,11 +265,10 @@ func (p *Parser) UnaryExpression() ast.Expr {
 
 		jq := &ast.JQ{Expr: expr, Path: path}
 		if p.s.Peek() == lexer.Arrow {
-			jq.PathExpr =  p.PathExpression()
+			jq.PathExpr = p.PathExpression()
 		}
 
 		return jq
-
 
 	default:
 		_, offset, _ := p.s.Scan()

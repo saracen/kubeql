@@ -1,14 +1,14 @@
 package ast
 
 import (
+	"fmt"
 	"reflect"
 	"strconv"
-	"fmt"
 
 	"github.com/saracen/kubeql/query/lexer"
 
-	"k8s.io/client-go/util/jsonpath"
 	"github.com/reflect/filq"
+	"k8s.io/client-go/util/jsonpath"
 )
 
 func EvalIsEmpty(expr Expr, data map[string]interface{}) (bool, error) {

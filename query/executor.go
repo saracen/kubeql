@@ -6,11 +6,11 @@ import (
 	"github.com/saracen/kubeql/query/ast"
 	"github.com/saracen/kubeql/query/joiner"
 
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/dynamic"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/rest"
 )
 
 type Results struct {
@@ -55,7 +55,7 @@ func (i *UnstructuredListIterator) Next() joiner.Tuple {
 	idx := i.idx
 	i.idx++
 
-	result := map[string]interface{} {
+	result := map[string]interface{}{
 		i.name: i.data.Items[idx].UnstructuredContent(),
 	}
 
